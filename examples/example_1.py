@@ -19,30 +19,47 @@ from rlpyt.algos.dqn.dqn import DQN
 from rlpyt.agents.dqn.atari.atari_dqn_agent import AtariDqnAgent
 from rlpyt.runners.minibatch_rl import MinibatchRlEval
 from rlpyt.utils.logging.context import logger_context
-
+# R2D1
+from rlpyt.samplers.parallel.gpu.sampler import GpuSampler
+from rlpyt.samplers.parallel.gpu.collectors import GpuWaitResetCollector
+from rlpyt.experiments.configs.atari.dqn.atari_r2d1 import configs
+from rlpyt.algos.dqn.r2d1 import R2D1
+from rlpyt.runners.minibatch_rl import MinibatchRl
+from rlpyt.agents.dqn.atari.atari_r2d1_agent import AtariR2d1Agent
+from rlpyt.utils.launching.affinity import affinity_from_code, encode_affinity, quick_affinity_code
 
 def build_and_train(game="pong", run_ID=0, cuda_idx=None):
-    sampler = SerialSampler(
-        EnvCls=AtariEnv,
-        TrajInfoCls=AtariTrajInfo,  # default traj info + GameScore
-        env_kwargs=dict(game=game),
-        eval_env_kwargs=dict(game=game),
-        batch_T=4,  # Four time-steps per sampler iteration.
-        batch_B=1,
-        max_decorrelation_steps=0,
-        eval_n_envs=10,
-        eval_max_steps=int(10e3),
-        eval_max_trajectories=5,
+    # Either manually set the resources for the experiment:
+    affinity_code = encode_affinity(
+        n_cpu_core=2,
+        n_gpu=1,
+        # hyperthread_offset=8,  # if auto-detect doesn't work, number of CPU cores
+        # n_socket=1,  # if auto-detect doesn't work, can force (or force to 1)
+        run_slot=0,
+        cpu_per_run=1,
+        set_affinity=True,  # it can help to restrict workers to individual CPUs
     )
-    algo = DQN(min_steps_learn=1e3)  # Run with defaults.
-    agent = AtariDqnAgent()
+    print(affinity_code)
+    affinity = affinity_from_code(affinity_code)
+    config = configs["r2d1"]
+    config["eval_env"]["game"] = config["env"]["game"]
+
+    sampler = GpuSampler(
+        EnvCls=AtariEnv,
+        env_kwargs=config["env"],
+        CollectorCls=GpuWaitResetCollector,
+        TrajInfoCls=AtariTrajInfo,
+        eval_env_kwargs=config["eval_env"],
+        **config["sampler"]
+    )
+    algo = R2D1(optim_kwargs=config["optim"], **config["algo"])
+    agent = AtariR2d1Agent(model_kwargs=config["model"], **config["agent"])
     runner = MinibatchRlEval(
         algo=algo,
         agent=agent,
         sampler=sampler,
-        n_steps=50e6,
-        log_interval_steps=1e3,
-        affinity=dict(cuda_idx=cuda_idx),
+        affinity=affinity,
+        **config["runner"]
     )
     config = dict(game=game)
     name = "dqn_" + game
