@@ -8,6 +8,7 @@ from collections import namedtuple
 from rlpyt.envs.base import EnvSpaces, EnvStep
 from rlpyt.spaces.gym_wrapper import GymSpaceWrapper
 from rlpyt.utils.collections import is_namedtuple_class
+from voxel_env.voxel_env_gym import VoxelEnv
 
 
 class GymEnvWrapper(Wrapper):
@@ -35,7 +36,7 @@ class GymEnvWrapper(Wrapper):
             act_null_value=0, obs_null_value=0, force_float32=True):
         super().__init__(env)
         o = self.env.reset()
-        o, r, d, info = self.env.step(self.env.action_space.sample())
+        o, r, d, info = self.env.step([self.env.action_space.sample()])
         env_ = self.env
         time_limit = isinstance(self.env, TimeLimit)
         while not time_limit and hasattr(env_, "env"):
@@ -170,3 +171,14 @@ def make(*args, info_example=None, **kwargs):
     else:
         return GymEnvWrapper(EnvInfoWrapper(
             gym.make(*args, **kwargs), info_example))
+
+def voxel_make(*args, info_example=None, **kwargs):
+    """Use as factory function for making instances of gym environment with
+    rlpyt's ``GymEnvWrapper``, using ``gym.make(*args, **kwargs)``.  If
+    ``info_example`` is not ``None``, will include the ``EnvInfoWrapper``.
+    """
+    if info_example is None:
+        return GymEnvWrapper(VoxelEnv(*args, **kwargs))
+    else:
+        return GymEnvWrapper(EnvInfoWrapper(
+            VoxelEnv(*args, **kwargs), info_example))

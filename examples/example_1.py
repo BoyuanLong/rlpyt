@@ -13,6 +13,7 @@ use rlpyt.utils.logging.context.add_exp_param().
 
 """
 
+from rlpyt.runners.async_rl import AsyncRlEval
 from rlpyt.samplers.serial.sampler import SerialSampler
 from rlpyt.envs.atari.atari_env import AtariEnv, AtariTrajInfo
 from rlpyt.algos.dqn.dqn import DQN
@@ -22,13 +23,17 @@ from rlpyt.utils.logging.context import logger_context
 # R2D1
 from rlpyt.samplers.parallel.gpu.sampler import GpuSampler
 from rlpyt.samplers.parallel.gpu.collectors import GpuWaitResetCollector
-from rlpyt.experiments.configs.atari.dqn.atari_r2d1 import configs
+from rlpyt.samplers.async_.gpu_sampler import AsyncGpuSampler
+from rlpyt.samplers.async_.collectors import DbGpuResetCollector
+from examples.voxel_r2d1 import configs
 from rlpyt.algos.dqn.r2d1 import R2D1
 from rlpyt.runners.minibatch_rl import MinibatchRl
 from rlpyt.agents.dqn.atari.atari_r2d1_agent import AtariR2d1Agent
 from rlpyt.utils.launching.affinity import affinity_from_code, encode_affinity, quick_affinity_code
+# Voxel
+from rlpyt.envs.gym import voxel_make
 
-def build_and_train(game="pong", run_ID=0, cuda_idx=None):
+def build_and_train(game="TowerBuilding", run_ID=0, cuda_idx=None):
     # Either manually set the resources for the experiment:
     affinity_code = encode_affinity(
         n_cpu_core=2,
@@ -39,22 +44,22 @@ def build_and_train(game="pong", run_ID=0, cuda_idx=None):
         cpu_per_run=1,
         set_affinity=True,  # it can help to restrict workers to individual CPUs
     )
-    print(affinity_code)
     affinity = affinity_from_code(affinity_code)
     config = configs["r2d1"]
+    config["env"]["game"] = game
     config["eval_env"]["game"] = config["env"]["game"]
 
-    sampler = GpuSampler(
-        EnvCls=AtariEnv,
+    sampler = AsyncGpuSampler(
+        EnvCls=voxel_make,
         env_kwargs=config["env"],
-        CollectorCls=GpuWaitResetCollector,
+        CollectorCls=DbGpuResetCollector,
         TrajInfoCls=AtariTrajInfo,
         eval_env_kwargs=config["eval_env"],
         **config["sampler"]
     )
     algo = R2D1(optim_kwargs=config["optim"], **config["algo"])
     agent = AtariR2d1Agent(model_kwargs=config["model"], **config["agent"])
-    runner = MinibatchRlEval(
+    runner = AsyncRlEval(
         algo=algo,
         agent=agent,
         sampler=sampler,
@@ -62,8 +67,8 @@ def build_and_train(game="pong", run_ID=0, cuda_idx=None):
         **config["runner"]
     )
     config = dict(game=game)
-    name = "dqn_" + game
-    log_dir = "example_1"
+    name = "r2d1_" + game
+    log_dir = "tower_building"
     with logger_context(log_dir, run_ID, name, config, snapshot_mode="last"):
         runner.train()
 
@@ -71,7 +76,7 @@ def build_and_train(game="pong", run_ID=0, cuda_idx=None):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--game', help='Atari game', default='pong')
+    parser.add_argument('--game', help='Voxel game', default='TowerBuilding')
     parser.add_argument('--run_ID', help='run identifier (logging)', type=int, default=0)
     parser.add_argument('--cuda_idx', help='gpu to use ', type=int, default=None)
     args = parser.parse_args()
